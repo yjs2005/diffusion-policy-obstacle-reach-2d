@@ -1,0 +1,9 @@
+{
+  "num_episodes": 50,
+  "success_rate": 0.04,
+  "avg_final_distance": 0.8730557574331761,
+  "avg_steps": 77.64,
+  "diffusion_steps": 50,
+  "execute_steps": 4,
+  "checkpoint": "outputs/checkpoints/best.pt"
+}

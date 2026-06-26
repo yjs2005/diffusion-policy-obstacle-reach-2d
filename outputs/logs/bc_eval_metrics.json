@@ -1,0 +1,8 @@
+{
+  "num_episodes": 50,
+  "success_rate": 1.0,
+  "avg_final_distance": 0.04094318199902773,
+  "avg_steps": 16.04,
+  "execute_steps": 4,
+  "checkpoint": "outputs/checkpoints/bc_best.pt"
+}

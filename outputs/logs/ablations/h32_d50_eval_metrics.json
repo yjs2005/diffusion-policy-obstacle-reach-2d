@@ -1,0 +1,9 @@
+{
+  "num_episodes": 30,
+  "success_rate": 0.1,
+  "avg_final_distance": 1.0090634691218534,
+  "avg_steps": 74.4,
+  "diffusion_steps": 50,
+  "execute_steps": 4,
+  "checkpoint": "outputs/checkpoints/ablations/h32_d50/best.pt"
+}

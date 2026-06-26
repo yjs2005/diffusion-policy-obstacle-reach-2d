@@ -1,0 +1,10 @@
+horizon,diffusion_steps,num_demos,epochs,num_episodes,success_rate,avg_final_distance,avg_steps,checkpoint,metrics_path
+8,20,1000,30,30,0.13333333333333333,0.884822866693139,75.53333333333333,outputs/checkpoints/ablations/h8_d20/best.pt,outputs/logs/ablations/h8_d20_eval_metrics.json
+8,50,1000,30,30,0.1,0.50007248831292,78.7,outputs/checkpoints/ablations/h8_d50/best.pt,outputs/logs/ablations/h8_d50_eval_metrics.json
+8,100,1000,30,30,0.2,0.2675429635370771,73.56666666666666,outputs/checkpoints/ablations/h8_d100/best.pt,outputs/logs/ablations/h8_d100_eval_metrics.json
+16,20,1000,30,30,0.03333333333333333,0.976020600212117,79.03333333333333,outputs/checkpoints/ablations/h16_d20/best.pt,outputs/logs/ablations/h16_d20_eval_metrics.json
+16,50,1000,30,30,0.06666666666666667,0.797665324062109,77.26666666666667,outputs/checkpoints/ablations/h16_d50/best.pt,outputs/logs/ablations/h16_d50_eval_metrics.json
+16,100,1000,30,30,0.06666666666666667,0.7591904223586122,78.76666666666667,outputs/checkpoints/ablations/h16_d100/best.pt,outputs/logs/ablations/h16_d100_eval_metrics.json
+32,20,1000,30,30,0.03333333333333333,1.0210992610702911,79.23333333333333,outputs/checkpoints/ablations/h32_d20/best.pt,outputs/logs/ablations/h32_d20_eval_metrics.json
+32,50,1000,30,30,0.1,1.0090634691218534,74.4,outputs/checkpoints/ablations/h32_d50/best.pt,outputs/logs/ablations/h32_d50_eval_metrics.json
+32,100,1000,30,30,0.06666666666666667,0.9965937263021867,79.13333333333334,outputs/checkpoints/ablations/h32_d100/best.pt,outputs/logs/ablations/h32_d100_eval_metrics.json

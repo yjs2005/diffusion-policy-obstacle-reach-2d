@@ -1,4 +1,4 @@
-# mini-diffusion-policy-2d
+# diffusion-policy-obstacle-reach-2d
 
 一个面向学习、展示和简历项目整理的轻量级 Diffusion Policy 复现。项目不下载大模型，不下载外部机器人数据集，不依赖 MuJoCo、Isaac Sim 或真实机械臂，只用 PyTorch 和一个手写 2D 点机器人环境，在普通笔记本 CPU 上跑通：
 
@@ -48,7 +48,7 @@ noisy_action_sequence + observation + goal/task_condition + diffusion_timestep
 建议使用 Python 3.10 或更新版本。
 
 ```powershell
-cd mini-diffusion-policy-2d
+cd diffusion-policy-obstacle-reach-2d
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
@@ -307,7 +307,7 @@ outputs/logs/obstacle_eval_metrics.json
 ## 项目结构
 
 ```text
-mini-diffusion-policy-2d/
+diffusion-policy-obstacle-reach-2d/
 ├── README.md
 ├── requirements.txt
 ├── train.py

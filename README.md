@@ -1,50 +1,47 @@
 # mini-diffusion-policy-2d
 
-一个面向学习和展示的轻量级 Diffusion Policy 复现项目。项目不下载大模型，不下载外部机器人数据集，不依赖 MuJoCo、Isaac Sim 或真实机械臂，只在一个 2D 点机器人 reaching 环境中跑通：
+一个面向学习、展示和简历项目整理的轻量级 Diffusion Policy 复现。项目不下载大模型，不下载外部机器人数据集，不依赖 MuJoCo、Isaac Sim 或真实机械臂，只用 PyTorch 和一个手写 2D 点机器人环境，在普通笔记本 CPU 上跑通：
 
 ```text
-专家数据生成 -> Diffusion Policy 训练 -> 闭环评估 -> BC baseline 对比 -> Ablation study
+专家数据生成 -> Diffusion Policy 训练 -> 闭环评估 -> BC baseline 对比 -> Ablation -> 障碍物多路径实验
 ```
 
 ## 1. 项目背景：为什么 Diffusion Policy 能用于机器人动作生成
 
-机器人控制可以看成条件动作生成问题：给定当前观测、目标和任务上下文，策略需要生成下一段可执行动作。传统行为克隆通常直接回归单步动作，但真实机器人任务常存在多种可行轨迹，例如从左侧或右侧接近目标、绕开障碍物、选择不同抓取姿态等。单步 MSE 回归容易学到多个专家动作的平均值，导致动作不稳定。
+机器人控制可以看成一个条件动作生成问题：给定当前观测、目标和任务上下文，策略需要生成接下来可执行的动作。传统 Behavior Cloning 常用 MSE 直接回归动作，但当同一个状态下存在多种合理动作时，例如绕障碍物的上路径和下路径，单一均值回归容易学到“平均动作”，这个动作可能正好不可执行。
 
-Diffusion Policy 的核心思想是：把机器人动作序列当作连续数据分布来建模。训练时给专家动作序列加入高斯噪声，让神经网络学习在观测条件下预测噪声；推理时从随机噪声开始逐步去噪，生成一段未来动作序列。这个机制最早常用于图像生成，但同样适用于连续机器人动作。
+Diffusion Policy 的核心思想是把机器人动作序列看成连续数据分布来建模。训练时给专家 action chunk 加噪声，让网络学习在观测条件下预测噪声；推理时从高斯噪声开始，多步去噪生成未来动作序列。扩散模型最初常见于图像生成，但它本质上学习的是连续数据分布，因此也可以用于生成连续机器人动作。
 
-本项目把真实机器人系统简化为 2D reaching：
+本项目把真实机器人系统压缩到两个 CPU 可跑的小任务：
 
-- observation：当前位置 `(x, y)`
-- goal：目标位置 `(gx, gy)`
-- action：位置增量 `(dx, dy)`
-- expert：每步朝目标方向移动，并加入少量噪声
-- policy：输入 `observation + goal`，输出未来 `horizon` 步动作序列
+- Simple Reaching：点机器人从随机起点移动到随机目标。
+- Obstacle Multi-path Reaching：点机器人需要绕过圆形障碍物，同一个输入下存在上绕和下绕两种专家路径。
 
 ## 2. 方法简介：conditional denoising + action chunk + receding horizon control
 
 ### Conditional Denoising
 
-模型输入包括：
+Diffusion Policy 的 denoising network 输入：
 
 ```text
-noisy_action_sequence + observation + goal + diffusion_timestep
+noisy_action_sequence + observation + goal/task_condition + diffusion_timestep
 ```
 
-训练目标是预测加入动作序列中的噪声。推理时，模型从高斯噪声开始，经过多步反向去噪，生成符合当前状态和目标的动作序列。
+训练目标是预测加到专家动作序列中的噪声。推理时，模型从随机噪声开始逐步去噪，生成符合当前观测和目标的动作序列。
 
 ### Action Chunk
 
-策略不是只输出一步动作，而是输出一段未来动作：
+策略不是只输出一步动作，而是输出未来一段动作：
 
 ```text
 [a_t, a_{t+1}, ..., a_{t+horizon-1}]
 ```
 
-本项目默认 `horizon=16`。Action chunk 让策略具有短期规划能力，动作也更容易保持连续。
+本项目默认 `horizon=16`。Action chunk 让策略有短期规划能力，也让动作更连续。
 
 ### Receding Horizon Control
 
-评估时不会一次性执行完整 action chunk。默认每次只执行前 `execute_steps=4` 步，然后重新观测当前位置、重新生成动作序列。这种闭环执行方式可以不断修正偏差。
+评估时不会一次性执行完整 action chunk，而是默认每次执行前 `execute_steps=4` 步，然后重新观测当前状态并重新生成动作序列。这种闭环执行方式可以不断修正偏差。
 
 ## 3. 环境安装
 
@@ -67,15 +64,25 @@ pip install -r requirements.txt
 
 ## 4. 数据生成
 
+Simple Reaching 数据：
+
 ```powershell
 python scripts/generate_dataset.py --num_demos 1000 --horizon 16 --save_path data/demos.npz
 ```
 
-生成的 `.npz` 文件包含：
+Obstacle Multi-path Reaching 数据：
 
-- `observation`：`(N, 2)`
-- `goal`：`(N, 2)`
-- `action_sequence`：`(N, horizon, 2)`
+```powershell
+python scripts/generate_obstacle_dataset.py --num_pairs 1000 --horizon 16 --save_path data/obstacle_demos.npz
+```
+
+障碍物任务中，观察量为：
+
+```text
+[x, y, gx, gy, ox, oy, r]
+```
+
+其中 `(x, y)` 是当前位置，`(gx, gy)` 是目标，`(ox, oy, r)` 是圆形障碍物中心和半径。注意：上绕/下绕 mode 不作为输入，这样同一个状态下会保留多模态动作分布。
 
 ## 5. 训练命令
 
@@ -91,13 +98,25 @@ python train.py --data_path data/demos.npz --epochs 50 --batch_size 128 --diffus
 python train_bc.py --data_path data/demos.npz --epochs 50 --batch_size 128 --device cpu
 ```
 
+训练障碍物多路径任务可以直接使用一键脚本：
+
+```powershell
+python scripts/run_obstacle_experiment.py
+```
+
+快速 smoke test：
+
+```powershell
+python scripts/run_obstacle_experiment.py --quick
+```
+
 运行 ablation study：
 
 ```powershell
 python scripts/run_ablation.py
 ```
 
-快速检查 ablation 脚本链路：
+快速检查 ablation 流程：
 
 ```powershell
 python scripts/run_ablation.py --quick
@@ -117,57 +136,53 @@ python eval.py --checkpoint outputs/checkpoints/best.pt --num_episodes 50 --save
 python eval_bc.py --checkpoint outputs/checkpoints/bc_best.pt --num_episodes 50 --save_gif
 ```
 
-生成方法对比表：
+生成普通 reaching 的方法对比表：
 
 ```powershell
 python scripts/compare_methods.py --diffusion_metrics outputs/logs/eval_metrics.json --bc_metrics outputs/logs/bc_eval_metrics.json
 ```
 
-## Results
+评估障碍物多路径任务：
 
-当前结果已在 CPU 上实际跑出。主线设置为 `num_demos=1000`、`horizon=16`、`diffusion_steps=50`、`epochs=50`、`num_episodes=50`。
+```powershell
+python eval_obstacle.py --dp_checkpoint outputs/checkpoints/obstacle_dp/best.pt --bc_checkpoint outputs/checkpoints/obstacle_bc_best.pt
+```
+
+## 7. 实验结果 / Results
+
+当前结果已经在本地 CPU 上实际跑出。
+
+### Simple Reaching：Diffusion Policy vs BC
+
+配置：`num_demos=1000`，`horizon=16`，`diffusion_steps=50`，`epochs=50`，`num_episodes=50`。
 
 | Method | Success Rate | Avg Final Distance | Avg Steps | Episodes |
 | --- | ---: | ---: | ---: | ---: |
 | Diffusion Policy | 0.0400 | 0.8731 | 77.64 | 50 |
 | MLP Behavior Cloning | 1.0000 | 0.0409 | 16.04 | 50 |
 
-这个 toy 任务是低维、近似单模态的 reaching，因此直接回归专家动作的 BC baseline 很强。当前小型 MLP DDPM 版本完整复现了 Diffusion Policy 的训练和采样流程，但在该低维任务上没有追平 BC；这也说明该项目不仅是 demo，还能用于观察方法适用场景和失败模式。
+这个 toy 任务是低维、近似单模态的 reaching，因此直接回归专家动作的 BC baseline 表现更强。这个结果也说明：Diffusion Policy 不应该被硬套到所有任务上，它更适合需要建模多模态动作分布的场景。
 
-### Training Loss
+### Obstacle Multi-path Reaching：多模态动作生成
 
-![training_loss](outputs/figures/training_loss.png)
+配置：`num_pairs=1000`，`horizon=16`，`diffusion_steps=50`，`epochs=50`，`num_episodes=50`，`multi_samples=8`。
 
-### Evaluation Trajectories
+| Method | Success Rate | Collision Rate | Avg Final Distance | Diversity | Upper Route | Lower Route |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| BC | 0.8600 | 0.1400 | 0.1791 | 0.0000 | 0.52 | 0.48 |
+| DP single-sample | 0.1800 | 0.8200 | 0.8005 | 0.0000 | 0.58 | 0.42 |
+| DP multi-sample selection | 0.9400 | 0.0600 | 0.0992 | 0.0168 | 0.68 | 0.32 |
 
-![eval_trajectories](outputs/figures/eval_trajectories.png)
-
-### Rollout Demo
-
-![rollout](outputs/figures/rollout.gif)
-
-### BC Baseline Visuals
-
-BC baseline 的训练曲线和闭环轨迹：
-
-![bc_training_loss](outputs/figures/bc_training_loss.png)
-
-![bc_eval_trajectories](outputs/figures/bc_eval_trajectories.png)
-
-完整对比表保存于：
-
-```text
-outputs/logs/compare_results.md
-```
+观察：在 simple reaching 上 BC 更强；加入障碍物和上下两种专家路径后，Diffusion Policy 的多次采样加碰撞筛选版本在成功率、碰撞率和最终误差上优于 BC。这个实验更能体现扩散策略“生成多个候选 action chunk，再根据约束选择可执行轨迹”的价值。
 
 ### Ablation Study
 
-为了更接近论文实验，本项目加入两个轻量 ablation：
+为了让项目更像一个小研究实验，加入了两个轻量 ablation：
 
 - `horizon = 8, 16, 32`
 - `diffusion_steps = 20, 50, 100`
 
-每组配置默认使用 `num_demos=1000`、`epochs=30`、`num_episodes=30`。
+每组默认使用 `num_demos=1000`、`epochs=30`、`num_episodes=30`。
 
 | Horizon | Diffusion Steps | Success Rate | Avg Final Distance | Avg Steps |
 | ---: | ---: | ---: | ---: | ---: |
@@ -181,49 +196,111 @@ outputs/logs/compare_results.md
 | 32 | 50 | 0.1000 | 1.0091 | 74.40 |
 | 32 | 100 | 0.0667 | 0.9966 | 79.13 |
 
-观察：在当前轻量 MLP DDPM 设置下，较短 action horizon 配合更多 denoising steps 表现更好；`horizon=8, diffusion_steps=100` 在 ablation 中取得最高成功率和最低最终误差。
-
-完整结果保存于：
-
-```text
-outputs/logs/ablation_results.csv
-outputs/logs/ablation_results.md
-```
+观察：在当前小型 MLP DDPM 设置下，较短 action horizon 搭配更多 denoising steps 的表现更好；`horizon=8, diffusion_steps=100` 在 ablation 中取得最高成功率和最低最终误差。
 
 ## 8. 可视化图
 
-主要可视化产物：
+### Training Loss
 
-- Diffusion loss：`outputs/figures/training_loss.png`
-- Diffusion rollout trajectories：`outputs/figures/eval_trajectories.png`
-- Diffusion rollout GIF：`outputs/figures/rollout.gif`
-- BC loss：`outputs/figures/bc_training_loss.png`
-- BC rollout trajectories：`outputs/figures/bc_eval_trajectories.png`
-- BC rollout GIF：`outputs/figures/bc_rollout.gif`
-- Ablation 每组轨迹图：`outputs/figures/ablations/`
+![training_loss](outputs/figures/training_loss.png)
+
+### Evaluation Trajectories
+
+![eval_trajectories](outputs/figures/eval_trajectories.png)
+
+### Rollout Demo
+
+![rollout](outputs/figures/rollout.gif)
+
+### BC Training Loss
+
+![bc_training_loss](outputs/figures/bc_training_loss.png)
+
+### BC Evaluation Trajectories
+
+![bc_eval_trajectories](outputs/figures/bc_eval_trajectories.png)
+
+### BC Rollout Demo
+
+![bc_rollout](outputs/figures/bc_rollout.gif)
+
+### Obstacle DP Training Loss
+
+![obstacle_training_loss](outputs/figures/obstacle_training_loss.png)
+
+### Obstacle BC Training Loss
+
+![obstacle_bc_training_loss](outputs/figures/obstacle_bc_training_loss.png)
+
+### Obstacle Expert Modes
+
+![obstacle_expert_modes](outputs/figures/obstacle_expert_modes.png)
+
+### BC vs Diffusion Policy on Obstacle Reaching
+
+![bc_vs_dp_obstacle_rollouts](outputs/figures/bc_vs_dp_obstacle_rollouts.png)
+
+### Diffusion Policy Multi-sample Diversity
+
+![dp_multisample_diversity](outputs/figures/dp_multisample_diversity.png)
+
+### Obstacle Metrics Bar
+
+![obstacle_metrics_bar](outputs/figures/obstacle_metrics_bar.png)
+
+### Obstacle Rollout Demo
+
+![obstacle_rollout](outputs/figures/obstacle_rollout.gif)
+
+<details>
+<summary>Ablation 全部结果图</summary>
+
+| Config | Training Loss | Evaluation Trajectories |
+| --- | --- | --- |
+| h=8, steps=20 | ![h8_d20_training_loss](outputs/figures/ablations/h8_d20_training_loss.png) | ![h8_d20_eval_trajectories](outputs/figures/ablations/h8_d20_eval_trajectories.png) |
+| h=8, steps=50 | ![h8_d50_training_loss](outputs/figures/ablations/h8_d50_training_loss.png) | ![h8_d50_eval_trajectories](outputs/figures/ablations/h8_d50_eval_trajectories.png) |
+| h=8, steps=100 | ![h8_d100_training_loss](outputs/figures/ablations/h8_d100_training_loss.png) | ![h8_d100_eval_trajectories](outputs/figures/ablations/h8_d100_eval_trajectories.png) |
+| h=16, steps=20 | ![h16_d20_training_loss](outputs/figures/ablations/h16_d20_training_loss.png) | ![h16_d20_eval_trajectories](outputs/figures/ablations/h16_d20_eval_trajectories.png) |
+| h=16, steps=50 | ![h16_d50_training_loss](outputs/figures/ablations/h16_d50_training_loss.png) | ![h16_d50_eval_trajectories](outputs/figures/ablations/h16_d50_eval_trajectories.png) |
+| h=16, steps=100 | ![h16_d100_training_loss](outputs/figures/ablations/h16_d100_training_loss.png) | ![h16_d100_eval_trajectories](outputs/figures/ablations/h16_d100_eval_trajectories.png) |
+| h=32, steps=20 | ![h32_d20_training_loss](outputs/figures/ablations/h32_d20_training_loss.png) | ![h32_d20_eval_trajectories](outputs/figures/ablations/h32_d20_eval_trajectories.png) |
+| h=32, steps=50 | ![h32_d50_training_loss](outputs/figures/ablations/h32_d50_training_loss.png) | ![h32_d50_eval_trajectories](outputs/figures/ablations/h32_d50_eval_trajectories.png) |
+| h=32, steps=100 | ![h32_d100_training_loss](outputs/figures/ablations/h32_d100_training_loss.png) | ![h32_d100_eval_trajectories](outputs/figures/ablations/h32_d100_eval_trajectories.png) |
+
+</details>
+
+完整日志和结果表保存在：
+
+```text
+outputs/logs/train_log.json
+outputs/logs/bc_train_log.json
+outputs/logs/eval_metrics.json
+outputs/logs/bc_eval_metrics.json
+outputs/logs/compare_results.md
+outputs/logs/ablation_results.csv
+outputs/logs/ablation_results.md
+outputs/logs/obstacle_eval_metrics.json
+```
 
 ## 9. 与正式视觉版 Diffusion Policy 的区别
 
-本项目是教学和简历展示用的轻量复现，保留核心算法结构，但刻意去掉了高成本部分。
-
 | 项目 | 本项目 | 正式视觉版 Diffusion Policy |
 | --- | --- | --- |
-| 输入 | 2D 坐标 `(x, y, gx, gy)` | RGB/RGB-D 图像、机器人 proprioception、历史观测 |
+| 输入 | 2D 坐标、目标和障碍物参数 | RGB/RGB-D 图像、历史观测、proprioception |
 | 动作 | 2D 位移 `(dx, dy)` | 末端位姿、关节速度、夹爪动作等 |
-| 数据 | 手写专家自动生成 | 遥操作、真实机器人、仿真数据 |
-| 环境 | 手写 2D reaching | 真实机械臂或高保真仿真 |
-| 模型 | 小型 MLP denoiser | 视觉编码器 + 1D U-Net / Transformer 等 |
-| 训练成本 | CPU 可运行 | 通常需要 GPU 和大规模数据 |
-| 目标 | 理解算法闭环 | 完成真实机器人操作任务 |
+| 数据 | 手写专家自动生成 | 遥操作、真实机器人或高保真仿真数据 |
+| 环境 | 手写 2D reaching | 真实机械臂或复杂仿真 |
+| 模型 | 小型 MLP denoiser | 视觉编码器 + 1D U-Net / Transformer |
+| 训练成本 | CPU 可运行 | 通常需要 GPU 和更大数据集 |
+| 目标 | 理解核心算法闭环 | 完成真实机器人操作任务 |
 
-因此，本项目不是完整机器人系统，而是把 Diffusion Policy 的动作生成思想压缩到可本地复现的最小版本。
+因此，本项目不是完整机器人系统，而是把 Diffusion Policy 的动作生成思想压缩到可本地复现、可展示、可扩展的最小版本。
 
-## 10. 后续计划
+## 10. 后续计划：接入视觉输入 / 迁移到真实 XY 平台
 
-- 接入视觉输入：把 2D 坐标观测替换为简单图像，例如渲染点机器人和目标点，再加入 CNN encoder。
-- 引入障碍物：让 reaching 从单模态路径变成多模态路径，更适合展示 diffusion policy 的优势。
-- 替换 MLP denoiser：实现 1D U-Net action denoiser，贴近正式 Diffusion Policy。
-- 加入历史观测：使用过去几帧状态作为条件，模拟真实机器人中的时序信息。
+- 接入视觉输入：把 2D 坐标观察替换为简单渲染图像，例如 64x64 RGB 图，再加入 CNN encoder。
+- 替换 MLP denoiser：实现 1D U-Net action denoiser，更接近正式 Diffusion Policy。
+- 增加历史观测：使用过去几帧状态作为条件，模拟真实机器人中的时序信息。
 - 迁移到真实 XY 平台：把 `(dx, dy)` 输出映射到二维滑台或桌面 XY gantry 的控制接口。
 - 增加 real-time controller：加入速度限制、动作平滑、安全边界和异常停止逻辑。
 
@@ -237,13 +314,18 @@ mini-diffusion-policy-2d/
 ├── train_bc.py
 ├── eval.py
 ├── eval_bc.py
+├── eval_obstacle.py
 ├── scripts/
 │   ├── generate_dataset.py
+│   ├── generate_obstacle_dataset.py
 │   ├── compare_methods.py
-│   └── run_ablation.py
+│   ├── run_ablation.py
+│   ├── run_obstacle_experiment.py
+│   └── plot_obstacle_results.py
 ├── src/
 │   ├── envs/
-│   │   └── point_reach_env.py
+│   │   ├── point_reach_env.py
+│   │   └── obstacle_reach_env.py
 │   ├── models/
 │   │   ├── diffusion_policy.py
 │   │   └── bc_policy.py
@@ -263,4 +345,6 @@ mini-diffusion-policy-2d/
 
 ## 简历表述建议
 
-> 基于 PyTorch 复现轻量级 Diffusion Policy 模仿学习框架，构建 2D reaching 环境并自动生成专家 demonstrations；实现条件 DDPM 动作序列生成、MLP Behavior Cloning baseline、receding horizon 闭环控制与 horizon / diffusion steps ablation study，在 CPU 环境下完成训练、评估和可视化分析。
+1. 项目简介：基于 PyTorch 实现轻量级 Diffusion Policy 模仿学习项目，在 2D reaching 和障碍物多路径任务中复现 action chunk、conditional denoising 与 receding horizon control。
+2. 具体内容：实现专家数据生成、DDPM 动作序列去噪模型、MLP Behavior Cloning baseline、闭环 rollout 评估、horizon / diffusion steps ablation，以及障碍物多模态任务的一键实验脚本。
+3. 成果/当前结果：在 simple reaching 中观察到 BC 对低维单模态任务更有效；在 obstacle multi-path 任务中，Diffusion Policy 多次采样加碰撞筛选取得 0.94 success rate、0.06 collision rate，并生成完整训练曲线、轨迹图、GIF 和指标表。

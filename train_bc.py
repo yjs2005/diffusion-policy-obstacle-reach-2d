@@ -120,7 +120,13 @@ def main() -> None:
         DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False) if val_dataset is not None else None
     )
 
-    model = BCPolicyMLP(horizon=horizon, hidden_dim=args.hidden_dim).to(device)
+    model = BCPolicyMLP(
+        horizon=horizon,
+        action_dim=dataset.action_dim,
+        obs_dim=dataset.obs_dim,
+        goal_dim=dataset.goal_dim,
+        hidden_dim=args.hidden_dim,
+    ).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
 
     best_path = Path(args.checkpoint_path)
@@ -164,6 +170,9 @@ def main() -> None:
                 "device": str(device),
                 "lr": args.lr,
                 "hidden_dim": args.hidden_dim,
+                "obs_dim": dataset.obs_dim,
+                "goal_dim": dataset.goal_dim,
+                "action_dim": dataset.action_dim,
                 "action_scale": dataset.action_scale,
                 "best_val_loss": best_val,
                 "history": history,

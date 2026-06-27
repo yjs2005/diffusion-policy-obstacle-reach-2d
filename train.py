@@ -27,19 +27,24 @@ class DemoDataset(Dataset):
         if not data_path.exists():
             raise FileNotFoundError(f"Dataset not found: {data_path}")
 
-        data = np.load(data_path)
-        required = {"observation", "goal", "action_sequence"}
-        missing = required.difference(data.files)
-        if missing:
-            raise ValueError(f"Dataset is missing keys: {sorted(missing)}")
+        data = np.load(data_path, allow_pickle=True)
+        obs_key = "observation" if "observation" in data.files else "observations"
+        action_key = "action_sequence" if "action_sequence" in data.files else "actions"
+        if obs_key not in data.files:
+            raise ValueError("Dataset must contain `observation` or `observations`.")
+        if action_key not in data.files:
+            raise ValueError("Dataset must contain `action_sequence` or `actions`.")
 
-        self.observation = data["observation"].astype(np.float32)
-        self.goal = data["goal"].astype(np.float32)
-        self.action_sequence = data["action_sequence"].astype(np.float32)
-        if self.observation.ndim != 2 or self.observation.shape[1] != 2:
-            raise ValueError("observation must have shape (N, 2).")
-        if self.goal.shape != self.observation.shape:
-            raise ValueError("goal must have shape (N, 2).")
+        self.observation = data[obs_key].astype(np.float32)
+        if "goal" in data.files:
+            self.goal = data["goal"].astype(np.float32)
+        else:
+            self.goal = np.zeros((len(self.observation), 0), dtype=np.float32)
+        self.action_sequence = data[action_key].astype(np.float32)
+        if self.observation.ndim != 2:
+            raise ValueError("observation must have shape (N, obs_dim).")
+        if self.goal.ndim != 2 or len(self.goal) != len(self.observation):
+            raise ValueError("goal must have shape (N, goal_dim).")
         if self.action_sequence.ndim != 3 or self.action_sequence.shape[-1] != 2:
             raise ValueError("action_sequence must have shape (N, horizon, 2).")
         if len(self.observation) != len(self.action_sequence):
@@ -51,6 +56,9 @@ class DemoDataset(Dataset):
             raise ValueError("action_scale must be positive.")
 
         self.action_sequence = np.clip(self.action_sequence / self.action_scale, -1.0, 1.0)
+        self.obs_dim = int(self.observation.shape[1])
+        self.goal_dim = int(self.goal.shape[1])
+        self.action_dim = int(self.action_sequence.shape[-1])
 
     def __len__(self) -> int:
         return len(self.observation)
@@ -180,7 +188,13 @@ def main() -> None:
         DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False) if val_dataset is not None else None
     )
 
-    model = DiffusionPolicyMLP(horizon=horizon, hidden_dim=args.hidden_dim).to(device)
+    model = DiffusionPolicyMLP(
+        horizon=horizon,
+        action_dim=dataset.action_dim,
+        obs_dim=dataset.obs_dim,
+        goal_dim=dataset.goal_dim,
+        hidden_dim=args.hidden_dim,
+    ).to(device)
     scheduler = DDPMScheduler(num_train_timesteps=args.diffusion_steps, device=device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
 
@@ -227,6 +241,9 @@ def main() -> None:
                 "device": str(device),
                 "lr": args.lr,
                 "hidden_dim": args.hidden_dim,
+                "obs_dim": dataset.obs_dim,
+                "goal_dim": dataset.goal_dim,
+                "action_dim": dataset.action_dim,
                 "action_scale": dataset.action_scale,
                 "best_val_loss": best_val,
                 "history": history,

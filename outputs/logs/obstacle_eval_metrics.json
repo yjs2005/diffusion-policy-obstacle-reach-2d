@@ -1,0 +1,41 @@
+{
+  "num_episodes": 50,
+  "diffusion_steps": 50,
+  "multi_samples": 8,
+  "execute_steps": 4,
+  "obstacle_radius": 0.25,
+  "dp_checkpoint": "outputs/checkpoints/obstacle_dp/best.pt",
+  "bc_checkpoint": "outputs/checkpoints/obstacle_bc_best.pt",
+  "methods": {
+    "bc": {
+      "success_rate": 0.86,
+      "collision_rate": 0.14,
+      "avg_final_distance": 0.17908772165421397,
+      "avg_path_length": 1.6781353324651718,
+      "avg_smoothness": 0.009901523841544985,
+      "diversity": 0.0,
+      "upper_route_ratio": 0.52,
+      "lower_route_ratio": 0.48
+    },
+    "dp_single": {
+      "success_rate": 0.18,
+      "collision_rate": 0.82,
+      "avg_final_distance": 0.8005372853204608,
+      "avg_path_length": 0.9178673720359802,
+      "avg_smoothness": 0.021126235872507095,
+      "diversity": 0.0,
+      "upper_route_ratio": 0.58,
+      "lower_route_ratio": 0.42
+    },
+    "dp_multi": {
+      "success_rate": 0.94,
+      "collision_rate": 0.06,
+      "avg_final_distance": 0.09921295441687107,
+      "avg_path_length": 1.7792473340034485,
+      "avg_smoothness": 0.019164843149483204,
+      "diversity": 0.016846187302853716,
+      "upper_route_ratio": 0.68,
+      "lower_route_ratio": 0.32
+    }
+  }
+}

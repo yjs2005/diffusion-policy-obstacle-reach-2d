@@ -39,7 +39,7 @@ class BCPolicyMLP(nn.Module):
 
     def forward(self, observation: torch.Tensor, goal: torch.Tensor) -> torch.Tensor:
         if observation.ndim != 2 or goal.ndim != 2:
-            raise ValueError("observation and goal must have shape (B, 2).")
+            raise ValueError("observation and goal must have shape (B, dim).")
         batch_size = observation.shape[0]
         x = torch.cat([observation, goal], dim=-1)
         actions = self.net(x)
